@@ -28,6 +28,9 @@ To sync layers with real hardware, close any other tab using the keyboard
 実機連動を使うときは、キーボードを掴んでいる他タブ（vial.rocks等）を閉じてから
 「⚡ 実機と連動」を押し、案内に従ってアンロックしてください。
 
+## Try it / 試す
+▶ https://skymy-workshop.github.io/split-typing-trainer/
+
 ## Credits / 謝辞
 
 Based on the mechanics of **美佳のタイプトレーナ (Mika Type Trainer)** by
