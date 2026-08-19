@@ -933,15 +933,22 @@ function loadKuromoji(){
   if(_kuroTok) return Promise.resolve(_kuroTok);
   if(_kuroLoading) return _kuroLoading;
   _kuroLoading=new Promise((resolve,reject)=>{
+    let done=false;
+    const to=setTimeout(()=>finish(new Error('辞書の読み込みがタイムアウトしました（回線が遅い可能性があります）')), 60000);
+    function finish(err,tok){
+      if(done) return; done=true; clearTimeout(to);
+      if(err){ _kuroLoading=null; reject(err); }        // 失敗時は次回リトライ可に
+      else { _kuroTok=tok; resolve(tok); }
+    }
     function build(){
-      if(!window.kuromoji){ reject(new Error('kuromoji未読込')); return; }
+      if(!window.kuromoji){ finish(new Error('kuromoji未読込')); return; }
       window.kuromoji.builder({dicPath:'https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dict/'})
-        .build((err,tok)=>{ if(err){reject(err);return;} _kuroTok=tok; resolve(tok); });
+        .build((err,tok)=>finish(err,tok));
     }
     if(window.kuromoji){ build(); return; }
     const s=document.createElement('script');
     s.src='https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/build/kuromoji.js';
-    s.onload=build; s.onerror=()=>reject(new Error('スクリプト読込失敗'));
+    s.onload=build; s.onerror=()=>finish(new Error('スクリプト読込失敗'));
     document.head.appendChild(s);
   });
   return _kuroLoading;
@@ -961,7 +968,7 @@ function startFree(text){
   const hira=toHiragana(text);
   const hasKanji=/[\u3400-\u9fff\uf900-\ufaff]/.test(hira);   // 漢字を含む
   if(hasKanji){
-    hidBanner('漢字をひらがなに変換中…（初回は辞書のダウンロードに数秒かかります）');
+    hidBanner('漢字をひらがなに変換中…　初回のみ約18MBの辞書を読み込みます（回線により数十秒かかることがあります。2回目以降は高速）');
     kanjiToHiragana(text).then(reading=>{
       hidBanner(null);
       startFreeRomaji(reading);
