@@ -230,7 +230,7 @@
     <div class="cell"><div class="lbl">Mode</div><div class="val" id="st-mode" style="font-size:14px;font-family:inherit">メニュー</div></div>
     <div class="cell"><div class="lbl">進捗</div><div class="val" id="st-prog">–</div></div>
     <div class="cell"><div class="lbl">経過</div><div class="val" id="st-time">0.0<small>秒</small></div></div>
-    <div class="cell"><div class="lbl">速度</div><div class="val" id="st-speed">0<small>文字/分</small></div></div>
+    <div class="cell"><div class="lbl">速度</div><div class="val" id="st-speed">0<small>WPM</small></div></div>
     <div class="cell"><div class="lbl">エラー</div><div class="val" id="st-err" style="color:var(--bad)">0</div></div>
   </div>
 
@@ -462,6 +462,13 @@ function buildKeyboard(){
   return {keyByChar, allKeys, kcEls};
 }
 let heatmapMetric=null;
+function hslToRgb(h,s,l){
+  const c=(1-Math.abs(2*l-1))*s, x=c*(1-Math.abs((h/60)%2-1)), m=l-c/2;
+  let r=0,g=0,b=0;
+  if(h<60){r=c;g=x;} else if(h<120){r=x;g=c;} else if(h<180){g=c;b=x;}
+  else if(h<240){g=x;b=c;} else if(h<300){r=x;b=c;} else {r=c;b=x;}
+  return 'rgb('+Math.round((r+m)*255)+','+Math.round((g+m)*255)+','+Math.round((b+m)*255)+')';
+}
 function tintHeatmap(keys){
   const cum=loadKeyStats(); const vals=[];
   keys.forEach(el=>{
@@ -475,7 +482,7 @@ function tintHeatmap(keys){
   const arr=vals.map(x=>x.v), max=Math.max(...arr), min=Math.min(...arr);
   vals.forEach(({el,v})=>{
     const t=max>min?(v-min)/(max-min):0.5;
-    el.style.background=`hsl(${Math.round(140*(1-t))},68%,46%)`;
+    el.style.background=hslToRgb(140*(1-t),0.68,0.46);
     el.style.color='#151515';
     const bar=el.querySelector('.fbar'); if(bar) bar.style.opacity='0';
   });
@@ -675,9 +682,9 @@ function setStatus(mode, prog){
 function updateLiveStats(){
   const t=(state.running? (performance.now()-state.startTime):(state.endTime-state.startTime))/1000;
   document.getElementById('st-time').innerHTML = (t>0?t:0).toFixed(1)+'<small>秒</small>';
-  const spd = t>0? Math.round(state.count*60/t) : 0;
-  const unit = state.mode==='romaji'?'かな/分':'文字/分';
-  document.getElementById('st-speed').innerHTML = spd+'<small>'+unit+'</small>';
+  const cpm = t>0? ((state.mode==='romaji'? state.keyCount : state.count)*60/t) : 0;  // 打鍵/分（ローマ字は実打鍵）
+  const wpm = t>0? toWpm(cpm) : 0;
+  document.getElementById('st-speed').innerHTML = wpm+'<small>WPM</small>';
   document.getElementById('st-err').textContent = state.errCount;
 }
 
@@ -687,7 +694,7 @@ function renderMainMenu(){
   clearKeyStates(); document.getElementById('kb').classList.remove('guideoff');
   setStatus('メニュー','–');
   document.getElementById('st-time').innerHTML='0.0<small>秒</small>';
-  document.getElementById('st-speed').innerHTML='0<small>文字/分</small>';
+  document.getElementById('st-speed').innerHTML='0<small>WPM</small>';
   document.getElementById('st-err').textContent='0';
   clearHeatmap();
   const items=[
@@ -919,10 +926,52 @@ function buildFreeItems(text){
 function toHiragana(text){
   return text.replace(/[\u30a1-\u30f6]/g, c=>String.fromCharCode(c.charCodeAt(0)-0x60));
 }
+function kataToHira(s){ return s.replace(/[\u30a1-\u30f6]/g, c=>String.fromCharCode(c.charCodeAt(0)-0x60)); }
+// 形態素解析(kuromoji)をCDNから読み込み、漢字を含む文を「読み(ひらがな)」に変換する
+let _kuroTok=null, _kuroLoading=null;
+function loadKuromoji(){
+  if(_kuroTok) return Promise.resolve(_kuroTok);
+  if(_kuroLoading) return _kuroLoading;
+  _kuroLoading=new Promise((resolve,reject)=>{
+    function build(){
+      if(!window.kuromoji){ reject(new Error('kuromoji未読込')); return; }
+      window.kuromoji.builder({dicPath:'https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dict/'})
+        .build((err,tok)=>{ if(err){reject(err);return;} _kuroTok=tok; resolve(tok); });
+    }
+    if(window.kuromoji){ build(); return; }
+    const s=document.createElement('script');
+    s.src='https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/build/kuromoji.js';
+    s.onload=build; s.onerror=()=>reject(new Error('スクリプト読込失敗'));
+    document.head.appendChild(s);
+  });
+  return _kuroLoading;
+}
+function kanjiToHiragana(text){
+  return loadKuromoji().then(tok=>{
+    const tokens=tok.tokenize(text);
+    return tokens.map(t=>{
+      const r=(t.reading && t.reading!=='*') ? t.reading : t.surface_form;
+      return kataToHira(r);
+    }).join('');
+  });
+}
 function startFree(text){
   if(!text || !text.trim()){ renderFreeInput(); return; }
   state._freeText=text;
   const hira=toHiragana(text);
+  const hasKanji=/[\u3400-\u9fff\uf900-\ufaff]/.test(hira);   // 漢字を含む
+  if(hasKanji){
+    hidBanner('漢字をひらがなに変換中…（初回は辞書のダウンロードに数秒かかります）');
+    kanjiToHiragana(text).then(reading=>{
+      hidBanner(null);
+      startFreeRomaji(reading);
+    }).catch(err=>{
+      hidBanner(null);
+      alert('漢字の読み変換に失敗しました（オフライン、またはCDNに接続できない可能性）。\nひらがな部分のみで練習します。\n\n'+(err&&err.message||''));
+      startFreeRomaji(hira);            // フォールバック：漢字はスキップ
+    });
+    return;
+  }
   if(/[\u3041-\u3093ゃゅょっー]/.test(hira)){          // ひらがなを含む → ローマ字練習
     startFreeRomaji(hira); return;
   }
@@ -934,8 +983,22 @@ function startFree(text){
   beginFlow('自由テキスト練習');
   hintEl.innerHTML='最後まで打ちきろう（制限時間なし）　<span class="k">Esc</span> 中断';
 }
+function expandChoon(s){
+  const vowelHira={a:'あ',i:'い',u:'う',e:'え',o:'お'};
+  let out='';
+  for(const c of s){
+    if(c==='ー' && out.length){
+      const prev=out[out.length-1];
+      const opt=(KANA[prev]||[''])[0];
+      const v=opt? opt[opt.length-1] : '';
+      out += vowelHira[v] || '';
+    } else out+=c;
+  }
+  return out;
+}
 function startFreeRomaji(hira){
-  const clean=[...hira].filter(c=>/[\u3041-\u3093ゃゅょっー]/.test(c)||c===' ').join('');
+  const expanded=expandChoon(hira);
+  const clean=[...expanded].filter(c=>/[\u3041-\u3093ゃゅょっ]/.test(c)||c===' ').join('');
   const units=decompose(clean).filter(u=>!u.unknown && u.options && u.options.length);
   if(!units.length){ alert('ローマ字にできるひらがなが含まれていません。'); renderFreeInput(); return; }
   state.view='romaji'; state.mode='romaji'; state.setKey='free';
@@ -1030,7 +1093,7 @@ function renderFlow(){
     let cls='ch'+(t.sp?' sp':'');
     if(i<state.ptr) cls+= t.sp?'':' done';
     else if(i===state.ptr) cls+=' cur';
-    const disp = t.ch===' ' ? '␣' : t.ch;
+    const disp = t.ch===' ' ? '␣' : esc(t.ch);
     return `<span class="${cls}" data-i="${i}">${disp}</span>`;
   }).join('');
   screen.innerHTML=`<div class="text-flow" id="flow">${html}</div>`;
@@ -1166,16 +1229,19 @@ function renderRomaji(){
     let cls='ch'+(u.isSpace?' sp':'');
     if(i<state.uIdx) cls+= u.isSpace?'':' done';
     else if(i===state.uIdx) cls+=' cur';
-    return `<span class="${cls}" data-i="${i}">${u.display}</span>`;
+    return `<span class="${cls}" data-i="${i}">${esc(u.display)}</span>`;
   }).join('');
   const u=currentRomajiUnit();
   let romajiLine='';
   if(u && !u.isSpace){
     const opt=firstViable(u);
-    const typed=state.buf, rest=opt.slice(state.buf.length);
-    const alts=u.options.filter(o=>o!==opt);
-    romajiLine=`<div class="romaji-line mono"><span class="rtyped">${typed}</span><span class="rrest">${rest}</span>`
-      + (alts.length?`<span class="ralt"> ・ 別: ${alts.join(' / ')}</span>`:'') + `</div>`;
+    const typed=esc(state.buf), rest=esc(opt.slice(state.buf.length));
+    const std=u.options[0];                                   // 正規（ヘボン式など先頭表記）
+    const short=u.options.reduce((a,b)=>b.length<a.length?b:a, u.options[0]); // 最短
+    const anno = (std!==short)
+      ? `<span class="ralt"> ・ 正規 ${esc(std)} ／ 最短 ${esc(short)}</span>`
+      : '';
+    romajiLine=`<div class="romaji-line mono"><span class="rtyped">${typed}</span><span class="rrest">${rest}</span>${anno}</div>`;
   } else if(u && u.isSpace){
     romajiLine=`<div class="romaji-line mono"><span class="rrest">␣ (スペース)</span></div>`;
   }
@@ -1479,6 +1545,10 @@ function importStats(file){
   rd.readAsText(file);
 }
 // キー文字 -> {label, color}（指の色）
+// HTMLエスケープ（innerHTMLに入れるユーザー由来データ用）
+function esc(s){
+  return String(s).replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
 function keyDisplay(ch){
   const el=KBD.keyByChar[ch];
   const f=el?el.dataset.finger:null;
@@ -1487,7 +1557,7 @@ function keyDisplay(ch){
   if(ch===' ') label='␣';
   else if(/[a-z]/.test(ch)) label=ch.toUpperCase();
   else label=ch;
-  return {label, col};
+  return {label:esc(label), col};   // ラベルはHTMLエスケープ（インポートJSON等の不正キー対策）
 }
 
 function saveRecord(mode, setKey, spd){
@@ -1598,13 +1668,29 @@ function renderHeatmap(){
   state.view='heatmap'; state.mode=null;
   setStatus('ヒートマップ','–');
   state._heatMetric=state._heatMetric||'miss';
+  // キーボードが非表示だとヒートマップが見えないので自動で表示
+  if(typeof window.__kbVisible!=='undefined' && !window.__kbVisible){
+    window.__kbVisible=true;
+    try{ localStorage.setItem('splitTypingTrainer.kbVisible','1'); }catch(e){}
+    applyKbVisible(true);
+  }
   applyHeatmap(state._heatMetric);
+  // データの有無を判定
+  const cum=loadKeyStats();
+  const hasData=KBD.allKeys.some(el=>{
+    const ch=el.dataset.ch; if(!ch||!el.dataset.finger) return false;
+    const s=cum[ch]; if(!s) return false;
+    return state._heatMetric==='miss'? (s.att>=3) : ((s.tcnt||0)>=3);
+  });
   const btn=(m,l)=>`<button class="pill${state._heatMetric===m?' live':''}" data-hm="${m}">${l}</button>`;
+  const note = hasData
+    ? '<p class="scr-note" style="text-align:center;margin-top:14px;">下のキーボードで色付け表示中。各キー3回以上のデータが対象です。</p>'
+    : '<p class="scr-note" style="text-align:center;margin-top:14px;color:var(--accent);">まだ色付けできるデータがありません（各キー3回以上の入力が必要）。<br>「反応時間」に切り替えると出やすいことがあります。もう少し練習してから見てみてください。</p>';
   screen.innerHTML=`<div class="menu-title mono">ヒートマップ</div>
     <p class="scr-note">下のキーボードを、累計のミス率／反応時間で色分けします（<span style="color:hsl(140,68%,46%)">緑=得意</span> → <span style="color:hsl(0,68%,46%)">赤=苦手</span>）。分割配列のどのエリアが弱いか一目で分かります。</p>
     <div style="display:flex;gap:8px;justify-content:center;">${btn('miss','ミス率')}${btn('time','反応時間')}</div>
-    <p class="scr-note" style="text-align:center;margin-top:14px;">データのあるキーだけ色付けされます（各3回以上）。</p>`;
-  screen.querySelectorAll('[data-hm]').forEach(b=>b.addEventListener('click',()=>{ state._heatMetric=b.dataset.hm; applyHeatmap(state._heatMetric); renderHeatmap(); }));
+    ${note}`;
+  screen.querySelectorAll('[data-hm]').forEach(b=>b.addEventListener('click',()=>{ state._heatMetric=b.dataset.hm; renderHeatmap(); }));
   hintEl.innerHTML='<span class="k">Esc</span> メニューへ';
 }
 
@@ -1992,4 +2078,3 @@ updateHidBtn();
 </script>
 </body>
 </html>
-
