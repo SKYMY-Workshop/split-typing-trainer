@@ -1143,7 +1143,7 @@ function flowInput(ch){
     updateLiveStats();
   }
 }
-function finishFlow(completed){
+function finishFlow(completed, aborted){
   state.running=false; state.endTime=performance.now(); stopTick();
   state.finished=true; clearKeyStates();
   let sec=(state.endTime-state.startTime)/1000; if(sec<=0) sec=0.001;
@@ -1154,11 +1154,11 @@ function finishFlow(completed){
   else if(state.mode==='free') key='free';
   else if(state.mode==='layer') key='layer'+(state._layerIdx||0);
   else key=state.setKey;
-  const rec=saveRecord(state.mode, key, spd);
+  const rec=aborted? {isNew:false} : saveRecord(state.mode, key, spd);   // 中断は最高記録に反映しない
   const acc=state.count+state.errCount>0? state.count/(state.count+state.errCount)*100 : 100;
-  state.lastResult={sec,spd,err:state.errCount,newRec:rec.isNew,completed,keyRank:sessionKeyRanking(),slowRank:sessionSlowRanking(),biRank:sessionBigramRanking(),wpm:toWpm(spd),acc};
+  state.lastResult={sec,spd,err:state.errCount,newRec:rec.isNew,completed,aborted,keyRank:sessionKeyRanking(),slowRank:sessionSlowRanking(),biRank:sessionBigramRanking(),wpm:toWpm(spd),acc};
   mergeKeyStats();
-  pushHistory({t:Date.now(),mode:state.mode,key,wpm:toWpm(spd),acc:Math.round(acc*10)/10,spd:Math.round(spd)});
+  if(!aborted) pushHistory({t:Date.now(),mode:state.mode,key,wpm:toWpm(spd),acc:Math.round(acc*10)/10,spd:Math.round(spd)}); // 中断は上達グラフに入れない
   const title=document.getElementById('st-mode').textContent;
   renderResult(title, ()=> retryFlow());
 }
@@ -1311,17 +1311,17 @@ function advanceRomaji(){
   if(state.uIdx>=state.units.length){ finishRomaji(true); return; }
   renderRomaji(); refreshRomajiKeyboard();
 }
-function finishRomaji(completed){
+function finishRomaji(completed, aborted){
   state.running=false; state.endTime=performance.now(); stopTick();
   state.finished=true; clearKeyStates();
   let sec=(state.endTime-state.startTime)/1000; if(sec<=0) sec=0.001;
   const kpm=state.count*60/sec;     // かな/分
   const spm=state.keyCount*60/sec;  // 打鍵/分
-  const rec=saveRecord('romaji', state.setKey, kpm);
+  const rec=aborted? {isNew:false} : saveRecord('romaji', state.setKey, kpm);   // 中断は最高記録に反映しない
   const acc=state.count+state.errCount>0? state.count/(state.count+state.errCount)*100 : 100;
-  state.lastResult={sec,spd:kpm,kpm:spm,err:state.errCount,newRec:rec.isNew,romaji:true,keyRank:sessionKeyRanking(),slowRank:sessionSlowRanking(),biRank:sessionBigramRanking(),wpm:toWpm(spm),acc};
+  state.lastResult={sec,spd:kpm,kpm:spm,err:state.errCount,newRec:rec.isNew,romaji:true,aborted,keyRank:sessionKeyRanking(),slowRank:sessionSlowRanking(),biRank:sessionBigramRanking(),wpm:toWpm(spm),acc};
   mergeKeyStats();
-  pushHistory({t:Date.now(),mode:'romaji',key:state.setKey,wpm:toWpm(spm),acc:Math.round(acc*10)/10,spd:Math.round(kpm)});
+  if(!aborted) pushHistory({t:Date.now(),mode:'romaji',key:state.setKey,wpm:toWpm(spm),acc:Math.round(acc*10)/10,spd:Math.round(kpm)}); // 中断は上達グラフに入れない
   const isFree=state.setKey==='free';
   const title=isFree?'自由テキスト（ローマ字）':('ローマ字練習：'+(state.setKey==='word'?'単語':'ランダム'));
   renderResult(title, isFree? (()=>startFree(state._freeText)) : (()=>startRomaji(state.setKey)));
@@ -1392,6 +1392,7 @@ function renderResult(title, retryFn){
   screen.innerHTML=
     `<div class="result">
        <h2>${title} ・ 結果</h2>
+       ${r.aborted?'<div class="mk-note" style="text-align:center;color:var(--accent);margin-bottom:12px;">中断したため、最高記録・上達グラフには反映していません。</div>':''}
        ${r.newRec?'<div class="newrec">🎉 記録を更新しました！</div><br>':''}
        <div class="grid mono">
          <div class="k">${r.romaji?'かな数':'入力文字数'}</div><div class="v">${state.count}</div>
@@ -1822,7 +1823,7 @@ window.addEventListener('keydown', (e)=>{
   if(k==='Escape'){
     if(state.mode==='position'){ renderMainMenu(); }                 // ポジションは即メニュー
     else if(!state.finished){                                        // 実行中→中断して結果表示
-      state.mode==='romaji'? finishRomaji(false) : finishFlow(false);
+      state.mode==='romaji'? finishRomaji(false, true) : finishFlow(false, true);
     }
     else { renderMainMenu(); }                                       // 結果表示中→メニュー
     return;
