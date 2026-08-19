@@ -21,3 +21,24 @@ The original README grants the following permission:
 Copyright of the original algorithm and design remains with 今村二朗 (Jiro Imamura).
 All new code in this repository (analytics, heatmaps, Vial/WebHID integration,
 UI, and other additions) is licensed under the MIT License (see the LICENSE file).
+
+---------------------------------------------------------------------------
+
+Bundled third-party components
+------------------------------
+
+This repository bundles kuromoji.js and its dictionary (under dict/) so that
+Japanese kanji-to-reading conversion works from the same origin.
+
+kuromoji.js — Copyright Atilika Inc. and contributors.
+  Licensed under the Apache License, Version 2.0.
+  https://github.com/takuyaa/kuromoji.js
+
+Dictionary: MeCab IPADIC (mecab-ipadic-2.7.0-20070801),
+  derived from data by Nara Institute of Science and Technology (NAIST)
+  and including ICOT Free Software.
+  Redistributed unmodified under its original terms
+  (attribution and disclaimer preserved).
+
+The kuromoji.js runtime script itself is currently loaded from a CDN
+(cdn.jsdelivr.net); only the dictionary files are bundled here.
