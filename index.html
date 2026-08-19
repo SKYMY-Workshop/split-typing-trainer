@@ -1560,7 +1560,7 @@ const GRAPH_MODES=[['all','すべて'],['position','ポジション'],['random',
 function drawGraph(){
   const all=loadHistory();
   const f=state._graphFilter;
-  const data=(f==='all'?all:all.filter(h=>h.mode===f)).slice(-40);
+  const data=(f==='all'?all:all.filter(h=>h.mode===f)).filter(h=>(h.wpm||0)>0).slice(-40);
   const tabs=GRAPH_MODES.map(([m,l])=>`<button class="pill gtab${state._graphFilter===m?' live':''}" data-m="${m}">${l}</button>`).join(' ');
   let body;
   if(data.length<2){
@@ -1992,3 +1992,4 @@ updateHidBtn();
 </script>
 </body>
 </html>
+
