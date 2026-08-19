@@ -942,7 +942,7 @@ function loadKuromoji(){
     }
     function build(){
       if(!window.kuromoji){ finish(new Error('kuromoji未読込')); return; }
-      window.kuromoji.builder({dicPath:'https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dict/'})
+      window.kuromoji.builder({dicPath:'dict/'})
         .build((err,tok)=>finish(err,tok));
     }
     if(window.kuromoji){ build(); return; }
