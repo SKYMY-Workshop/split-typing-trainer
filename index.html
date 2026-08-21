@@ -1488,7 +1488,7 @@ function loadBiStats(){ try{return JSON.parse(localStorage.getItem(BISTATS_KEY))
 function loadHistory(){ try{return JSON.parse(localStorage.getItem(HISTORY_KEY))||[];}catch(e){return [];} }
 function pushHistory(rec){
   const h=loadHistory(); h.push(rec);
-  while(h.length>500) h.shift();
+  while(h.length>10000) h.shift();
   try{ localStorage.setItem(HISTORY_KEY, JSON.stringify(h)); }catch(e){}
 }
 function toWpm(charsPerMin){ return Math.round((charsPerMin/5)*10)/10; }
@@ -1631,15 +1631,19 @@ function renderGraph(){
   state.view='graph'; state.mode=null; clearHeatmap();
   setStatus('上達グラフ','–');
   state._graphFilter=state._graphFilter||'all';
+  state._graphLimit=state._graphLimit||50;
   drawGraph();
   hintEl.innerHTML='<span class="k">Esc</span> メニューへ';
 }
 const GRAPH_MODES=[['all','すべて'],['position','ポジション'],['random','ランダム'],['word','英単語'],['romaji','ローマ字'],['drill','ドリル'],['free','自由'],['layer','レイヤー']];
+const GRAPH_LIMITS=[50,100,1000,10000];
 function drawGraph(){
   const all=loadHistory();
   const f=state._graphFilter;
-  const data=(f==='all'?all:all.filter(h=>h.mode===f)).filter(h=>(h.wpm||0)>0).slice(-40);
+  const limit=state._graphLimit||50;
+  const data=(f==='all'?all:all.filter(h=>h.mode===f)).filter(h=>(h.wpm||0)>0).slice(-limit);
   const tabs=GRAPH_MODES.map(([m,l])=>`<button class="pill gtab${state._graphFilter===m?' live':''}" data-m="${m}">${l}</button>`).join(' ');
+  const limitTabs=GRAPH_LIMITS.map(n=>`<button class="pill gtab glim${state._graphLimit===n?' live':''}" data-n="${n}">直近${n}</button>`).join(' ');
   let body;
   if(data.length<2){
     body='<div class="scr-note" style="text-align:center;padding:30px;">データがまだ足りません。練習を重ねると、ここに速度と正確性の推移が表示されます。</div>';
@@ -1652,7 +1656,10 @@ function drawGraph(){
     const yA=v=> H-pad - (v/100)*(H-2*pad);
     const line=(pts)=>pts.map((p,i)=>(i?'L':'M')+xf(i).toFixed(1)+' '+p.toFixed(1)).join(' ');
     const wpmPath=line(wpm.map(yW)), accPath=line(acc.map(yA));
-    const dots=wpm.map((v,i)=>`<circle cx="${xf(i).toFixed(1)}" cy="${yW(v).toFixed(1)}" r="2.5" fill="var(--accent)"/>`).join('');
+    // 点は件数が多いと重い＆潰れるので、60件以下のときだけ描画
+    const dots = (n<=60)
+      ? wpm.map((v,i)=>`<circle cx="${xf(i).toFixed(1)}" cy="${yW(v).toFixed(1)}" r="2.5" fill="var(--accent)"/>`).join('')
+      : '';
     const gridY=[0,0.25,0.5,0.75,1].map(t=>{const y=(H-pad)-(t)*(H-2*pad);return `<line x1="${pad}" y1="${y}" x2="${W-pad}" y2="${y}" stroke="var(--line)" stroke-width="1"/><text x="6" y="${y+4}" fill="var(--ink-dim)" font-size="10">${Math.round(maxW*t)}</text><text x="${W-30}" y="${y+4}" fill="var(--f-middle)" font-size="10">${Math.round(100*t)}%</text>`;}).join('');
     body=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:760px;height:auto;">
       ${gridY}
@@ -1661,12 +1668,14 @@ function drawGraph(){
       ${dots}
     </svg>
     <div style="text-align:center;font-size:12px;color:var(--ink-dim);margin-top:4px;">
-      <span style="color:var(--accent);">■</span> WPM（左軸）　<span style="color:var(--f-middle);">▬</span> 正確性%（右軸）　直近${data.length}回
+      <span style="color:var(--accent);">■</span> WPM（左軸）　<span style="color:var(--f-middle);">▬</span> 正確性%（右軸）　表示${data.length}回${n>60?'（多いため点は非表示）':''}
     </div>`;
   }
   screen.innerHTML=`<div class="menu-title mono">上達グラフ</div>
-    <div class="gtabs">${tabs}</div>${body}`;
-  screen.querySelectorAll('.gtab').forEach(b=>b.addEventListener('click',()=>{ state._graphFilter=b.dataset.m; drawGraph(); }));
+    <div class="gtabs">${tabs}</div>
+    <div class="gtabs" style="margin-top:-6px;">${limitTabs}</div>${body}`;
+  screen.querySelectorAll('.gtab.glim').forEach(b=>b.addEventListener('click',()=>{ state._graphLimit=+b.dataset.n; drawGraph(); }));
+  screen.querySelectorAll('.gtab:not(.glim)').forEach(b=>b.addEventListener('click',()=>{ state._graphFilter=b.dataset.m; drawGraph(); }));
 }
 
 /* ============================================================
