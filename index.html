@@ -99,6 +99,14 @@
   .text-flow .ch.cur.err{background:var(--bad);color:#fff;animation:shake .18s;}
   .text-flow .ch.sp{color:#39404e;}
   .text-flow.kana{font-size:24px;letter-spacing:.12em;text-align:center;}
+  .text-flow.code{white-space:pre;overflow-x:auto;word-break:normal;font-size:18px;line-height:1.7;
+    letter-spacing:0;max-width:900px;padding:14px 16px;background:#12110f;border:1px solid var(--line);
+    border-radius:10px;}
+  .text-flow.code .ch{padding:0;border-bottom:none;}
+  .text-flow.code .ch.cur{padding:0;border-radius:2px;}
+  .text-flow.code .ch.indent{color:#3a3a38;opacity:.5;}
+  .text-flow.code .ch.nl{color:#4a4a48;opacity:.5;}
+  .text-flow.code .ch.nl.done{color:var(--good);opacity:.5;}
   .text-flow.kana .ch{font-family:"Hiragino Kaku Gothic ProN","Yu Gothic","Noto Sans JP",sans-serif;}
   .romaji-line{text-align:center;margin-top:18px;font-size:21px;letter-spacing:.1em;}
   .romaji-line .rtyped{color:var(--good);}
@@ -680,7 +688,7 @@ function currentTargetChar(){
   if(state.mode==='position') return state.posChar;
   if(state.mode==='random'||state.mode==='word'||state.mode==='drill'||state.mode==='free'||state.mode==='layer'){
     const t=state.target[state.ptr];
-    return t? t.ch : null;
+    return t? (t.nl? null : t.ch) : null;
   }
   return null;
 }
@@ -970,13 +978,18 @@ function startDrill(){
 
 /* ---- 自由テキスト練習（ASCIIは直接打鍵 / ひらがな等はローマ字で） ---- */
 function buildFreeItems(text){
-  const norm=text.replace(/\r/g,'').replace(/\n+/g,' ').replace(/\s+/g,' ').trim();
+  const lines=text.replace(/\r/g,'').replace(/\t/g,'  ').split('\n');  // タブは半角2つに
   const out=[];
-  for(const c of norm){
-    const code=c.codePointAt(0);
-    if(code<0x20 || code>0x7e) continue;          // 打鍵できないASCII外は除外
-    out.push({ch:c.toLowerCase(), sp:false});
-  }
+  lines.forEach((line,li)=>{
+    let i=0;
+    while(i<line.length && line[i]===' '){ out.push({ch:' ',sp:true,indent:true}); i++; }  // 行頭インデントは表示のみ・自動スキップ
+    for(;i<line.length;i++){
+      const c=line[i], code=c.codePointAt(0);
+      if(code<0x20||code>0x7e) continue;   // 打鍵できないASCII外は除外
+      out.push({ch:c, sp:false});          // 大文字もそのまま保持
+    }
+    if(li<lines.length-1) out.push({ch:'\n', nl:true});  // 改行（最終行以外）
+  });
   return out;
 }
 function toHiragana(text){
@@ -1018,33 +1031,35 @@ function kanjiToHiragana(text){
     }).join('');
   });
 }
-function startFree(text, label, histMode){
+function startFree(text, label, histMode, mode){
   if(!text || !text.trim()){ renderFreeInput(); return; }
   state._freeText=text; state._freeLabel=label||null; state._histMode=histMode||null;
+  state._freeMode = mode || 'auto';
+  const forceCode = state._freeMode==='code';
+  const forceRomaji = state._freeMode==='romaji';
   const hira=toHiragana(text);
-  const hasKanji=/[\u3400-\u9fff\uf900-\ufaff]/.test(hira);   // 漢字を含む
-  if(hasKanji){
-    hidBanner('漢字をひらがなに変換中…　初回のみ約18MBの辞書を読み込みます（回線により数十秒かかることがあります。2回目以降は高速）');
-    kanjiToHiragana(text).then(reading=>{
-      hidBanner(null);
-      startFreeRomaji(reading);
-    }).catch(err=>{
-      hidBanner(null);
-      alert('漢字の読み変換に失敗しました（オフライン、またはCDNに接続できない可能性）。\nひらがな部分のみで練習します。\n\n'+(err&&err.message||''));
-      startFreeRomaji(hira);            // フォールバック：漢字はスキップ
-    });
-    return;
-  }
-  if(/[\u3041-\u3093ゃゅょっー]/.test(hira)){          // ひらがなを含む → ローマ字練習
+  const hasKanji=/[\u3400-\u9fff\uf900-\ufaff]/.test(hira);
+  const hasKana =/[\u3041-\u3093ゃゅょっー]/.test(hira);
+  const wantRomaji = forceRomaji || (!forceCode && (hasKanji || hasKana));
+  if(wantRomaji){
+    if(hasKanji){
+      hidBanner('漢字をひらがなに変換中…　初回のみ約18MBの辞書を読み込みます（回線により数十秒かかることがあります。2回目以降は高速）');
+      kanjiToHiragana(text).then(reading=>{ hidBanner(null); startFreeRomaji(reading); })
+        .catch(err=>{ hidBanner(null);
+          alert('漢字の読み変換に失敗しました（オフライン、またはCDNに接続できない可能性）。\nひらがな部分のみで練習します。\n\n'+(err&&err.message||''));
+          startFreeRomaji(hira); });
+      return;
+    }
     startFreeRomaji(hira); return;
   }
+  // コード／ASCII（日本語文字は自動でスキップし、改行・インデント・大文字を保持）
   const items=buildFreeItems(text);
   if(!items.length){ alert('打てる文字（英字・数字・記号）が含まれていません。'); renderFreeInput(); return; }
   state.view='free'; state.mode='free'; state.setKey='free';
   state._extend=false; state._noTimeLimit=true;
   state.target=items; state.ptr=0;
   beginFlow(state._freeLabel||'自由テキスト練習');
-  hintEl.innerHTML='最後まで打ちきろう（制限時間なし）　<span class="k">Esc</span> 中断';
+  hintEl.innerHTML='行末は <span class="k">Enter</span> で改行　大文字はShift　制限時間なし　<span class="k">Esc</span> 中断';
 }
 function expandChoon(s){
   const vowelHira={a:'あ',i:'い',u:'う',e:'え',o:'お'};
@@ -1124,7 +1139,7 @@ function startWord(){
 function retryFlow(){
   if(state.mode==='word') startWord();
   else if(state.mode==='drill') startDrill();
-  else if(state.mode==='free') startFree(state._freeText, state._freeLabel, state._histMode);
+  else if(state.mode==='free') startFree(state._freeText, state._freeLabel, state._histMode, state._freeMode);
   else if(state.mode==='layer') startLayer(state._layerIdx);
   else startRandom(state.setKey);
 }
@@ -1134,7 +1149,7 @@ function beginFlow(title){
   resetKeyStats();
   state.running=false; state.startTime=0; state.endTime=0;
   state.guideOff=false; state.reveal=true;
-  if(state.target[0] && state.target[0].sp) state.ptr=1;
+  state.ptr=0; while(state.target[state.ptr] && state.target[state.ptr].sp) state.ptr++;
   setStatus(title, `0 文字`);
   renderFlow();
   refreshKeyboardForState();
@@ -1146,23 +1161,26 @@ function appendFlowItems(items){
   if(flow){
     items.forEach((t,idx)=>{
       const span=document.createElement('span');
-      span.className='ch'+(t.sp?' sp':'');
+      span.className='ch'+(t.sp?' sp':'')+(t.nl?' nl':'')+(t.indent?' indent':'');
       span.dataset.i=base+idx;
-      span.textContent = t.ch===' ' ? '␣' : t.ch;
+      span.textContent = t.nl? '↵' : (t.ch===' ' ? '␣' : t.ch);
       flow.appendChild(span);
+      if(t.nl) flow.appendChild(document.createTextNode('\n'));
     });
   }
   state.target.push(...items);
 }
 function renderFlow(){
+  const isFree = state.mode==='free';
   const html = state.target.map((t,i)=>{
-    let cls='ch'+(t.sp?' sp':'');
+    let cls='ch'+(t.sp?' sp':'')+(t.nl?' nl':'')+(t.indent?' indent':'');
     if(i<state.ptr) cls+= t.sp?'':' done';
     else if(i===state.ptr) cls+=' cur';
-    const disp = t.ch===' ' ? '␣' : esc(t.ch);
+    if(t.nl) return `<span class="${cls}" data-i="${i}">↵</span>\n`;
+    const disp = t.ch===' ' ? (isFree?' ':'␣') : esc(t.ch);
     return `<span class="${cls}" data-i="${i}">${disp}</span>`;
   }).join('');
-  screen.innerHTML=`<div class="text-flow" id="flow">${html}</div>`;
+  screen.innerHTML=`<div class="text-flow${isFree?' code':''}" id="flow">${html}</div>`;
 }
 function advancePtr(){
   state.ptr++;
@@ -1173,33 +1191,47 @@ function flowInput(ch){
     if(ch==='enter'){ retryFlow(); }
     return;
   }
-  let key = ch==='space'? ' ' : ch;
-  if(key.length!==1) return;
   const cur=state.target[state.ptr];
   if(!cur){ finishFlow(true); return; }
+  const markErr=()=>{
+    state.errCount++;
+    const el=screen.querySelector(`.ch[data-i="${state.ptr}"]`);
+    if(el){ el.classList.remove('err'); void el.offsetWidth; el.classList.add('err'); }
+    updateLiveStats();
+  };
+  const advanceOne=(incCount)=>{
+    const el=screen.querySelector(`.ch[data-i="${state.ptr}"]`);
+    if(el){ el.classList.remove('cur','err'); if(incCount) el.classList.add('done'); else el.classList.add('done'); }
+    if(incCount) state.count++;
+    advancePtr();
+    if(state._extend && state.ptr > state.target.length - 40){ appendFlowItems(state._gen(80)); }
+    const nxt=screen.querySelector(`.ch[data-i="${state.ptr}"]`);
+    if(nxt) nxt.classList.add('cur');
+    setStatus(document.getElementById('st-mode').textContent, `${state.count} 文字`);
+    updateLiveStats(); refreshKeyboardForState();
+    if(state.ptr>=state.target.length){ finishFlow(true); }
+  };
+  // 改行アイテム: Enter で打つ
+  if(cur.nl){
+    if(!state.running){ state.running=true; state.startTime=performance.now(); startTick(); }
+    if(ch==='enter'){ flashPress('enter',false); advanceOne(false); }   // 改行はカウントしない
+    else markErr();
+    return;
+  }
+  // 改行以外のところで Enter を押した → 誤打
+  if(ch==='enter'){ markErr(); return; }
+  // 通常文字（自由モードは大文字保持のため生キーを使用）
+  let key = ch==='space' ? ' ' : (state.mode==='free' ? (state._rawKey||ch) : ch);
+  if(key.length!==1) return;
   if(key===cur.ch){
     if(!state.running){ state.running=true; state.startTime=performance.now(); startTick(); }
     recordKeyStroke(cur.ch, false);
     flashPress(key,false);
-    if(!cur.sp) state.count++;
-    const el=screen.querySelector(`.ch[data-i="${state.ptr}"]`);
-    if(el){ el.classList.remove('cur','err'); if(!cur.sp) el.classList.add('done'); }
-    advancePtr();
-    if(state._extend && state.ptr > state.target.length - 40){    // 残り少なくなったら継ぎ足し
-      appendFlowItems(state._gen(80));
-    }
-    const nxt=screen.querySelector(`.ch[data-i="${state.ptr}"]`);
-    if(nxt) nxt.classList.add('cur');
-    setStatus(document.getElementById('st-mode').textContent, `${state.count} 文字`);
-    updateLiveStats();
-    refreshKeyboardForState();
-    if(state.ptr>=state.target.length){ finishFlow(true); }
+    advanceOne(!cur.sp);
   } else {
     recordKeyStroke(cur.ch, true);
-    state.errCount++; flashPress(key,true);
-    const el=screen.querySelector(`.ch[data-i="${state.ptr}"]`);
-    if(el){ el.classList.remove('err'); void el.offsetWidth; el.classList.add('err'); }
-    updateLiveStats();
+    flashPress(key,true);
+    markErr();
   }
 }
 function finishFlow(completed, aborted){
@@ -1430,7 +1462,7 @@ function finishRomaji(completed, aborted){
   if(!aborted) pushHistory({t:Date.now(),mode:state._histMode||'romaji',key:state.setKey,wpm:toWpm(spm),acc:Math.round(acc*10)/10,spd:Math.round(kpm)}); // 中断は上達グラフに入れない
   const isFree=state.setKey==='free', isSlow=state.setKey==='slowword';
   let title, retry;
-  if(isFree){ title=state._freeLabel||'自由テキスト（ローマ字）'; retry=()=>startFree(state._freeText, state._freeLabel, state._histMode); }
+  if(isFree){ title=state._freeLabel||'自由テキスト（ローマ字）'; retry=()=>startFree(state._freeText, state._freeLabel, state._histMode, state._freeMode); }
   else if(isSlow){ title='遅かった単語ドリル'; retry=()=>startSlowWordDrill(); }
   else { title='ローマ字練習：'+(state.setKey==='word'?'単語':'ランダム'); retry=()=>startRomaji(state.setKey); }
   renderResult(title, retry);
@@ -1724,6 +1756,7 @@ function saveRecord(mode, setKey, spd){
 function renderFreeInput(){
   state.view='free-input'; state.mode=null; clearHeatmap();
   setStatus('自由テキスト練習','–');
+  if(!state._freeModeSel){ try{ state._freeModeSel=localStorage.getItem('splitTypingTrainer.freeMode')||'auto'; }catch(e){ state._freeModeSel='auto'; } }
   const saved=loadFreeTexts();
   const listHtml = saved.length
     ? '<div class="ft-list">'+saved.map(s=>{
@@ -1733,9 +1766,15 @@ function renderFreeInput(){
                `<button class="ft-del" data-id="${esc(s.id)}" title="削除">×</button></div>`;
       }).join('')+'</div>'
     : '<p class="scr-note" style="margin-top:6px;">保存した文章はまだありません。下で貼り付けて「保存」すると、ここに一覧表示されます。</p>';
+  const modeBtn=(m,l)=>`<button class="pill fmode${state._freeModeSel===m?' live':''}" data-fm="${m}" style="font-size:12px;padding:5px 12px;">${l}</button>`;
   screen.innerHTML=
     `<div class="menu-title mono">自由テキスト練習</div>
-     <p class="scr-note">練習したい文章を貼り付けてください（コード・定型文・ローマ字・日本語など）。英数記号・スペース対応、大文字は小文字扱い、改行は空白に変換。漢字を含むとひらがな読みに変換します。</p>
+     <p class="scr-note">練習したい文章やコードを貼り付けてください。<b>改行・インデントを保持</b>し（行末は <span class="k">Enter</span>、行頭インデントは自動スキップ）、<b>大文字はそのまま</b>（Shift）。長い行は折り返さず横スクロール。</p>
+     <div style="display:flex;gap:8px;justify-content:center;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+       <span class="mono" style="font-size:11px;color:var(--ink-dim);">入力方式：</span>
+       ${modeBtn('auto','自動')}${modeBtn('code','コードとして')}${modeBtn('romaji','日本語をローマ字で')}
+     </div>
+     <p class="scr-note" style="margin-top:-4px;font-size:11px;">「自動」＝日本語を含めばローマ字、なければコード。「コードとして」＝日本語コメントは飛ばしてコードのレイアウトを保持。「日本語をローマ字で」＝かな・漢字の読みを打つ。</p>
      <div class="ft-saved"><div class="ft-head mono">保存した文章</div>${listHtml}</div>
      <textarea id="freeText" class="free-ta" placeholder="ここに文章を貼り付け…"></textarea>
      <input id="freeTitle" class="ft-titleinput" placeholder="保存時のタイトル（任意）" />
@@ -1744,8 +1783,13 @@ function renderFreeInput(){
        <button id="freeSave" class="pill" style="font-size:13px;padding:7px 16px;">💾 保存</button>
      </div>`;
   const ta=document.getElementById('freeText'); if(state._freeText) ta.value=state._freeText;
+  screen.querySelectorAll('.fmode').forEach(b=>b.addEventListener('click',()=>{
+    state._freeModeSel=b.dataset.fm;
+    try{ localStorage.setItem('splitTypingTrainer.freeMode', state._freeModeSel); }catch(e){}
+    screen.querySelectorAll('.fmode').forEach(x=>x.classList.toggle('live', x.dataset.fm===state._freeModeSel));
+  }));
   document.getElementById('freeStart').addEventListener('click',()=>{
-    const v=ta.value; if(!v.trim()){ ta.focus(); return; } startFree(v);
+    const v=ta.value; if(!v.trim()){ ta.focus(); return; } startFree(v, null, null, state._freeModeSel);
   });
   document.getElementById('freeSave').addEventListener('click',()=>{
     const v=ta.value; if(!v.trim()){ ta.focus(); return; }
@@ -1755,14 +1799,14 @@ function renderFreeInput(){
   });
   screen.querySelectorAll('.ft-load').forEach(b=>b.addEventListener('click',()=>{
     const item=loadFreeTexts().find(x=>x.id===b.dataset.id);
-    if(item) startFree(item.text);
+    if(item) startFree(item.text, null, null, state._freeModeSel);
   }));
   screen.querySelectorAll('.ft-del').forEach(b=>b.addEventListener('click',(e)=>{
     e.stopPropagation();
     if(confirm('この保存文章を削除しますか？')){ deleteFreeText(b.dataset.id); renderFreeInput(); }
   }));
   setTimeout(()=>ta.focus(),50);
-  hintEl.innerHTML='貼り付けて「練習」／「保存」　一覧から選んでロード　<span class="k">Esc</span> メニューへ';
+  hintEl.innerHTML='入力方式を選び「練習」／「保存」　一覧から選んでロード　<span class="k">Esc</span> メニューへ';
 }
 
 /* ============================================================
@@ -2004,7 +2048,7 @@ window.addEventListener('keydown', (e)=>{
   let norm=null;
   if(k===' ') norm='space';
   else if(k==='Enter') norm='enter';
-  else if(k.length===1) norm=k.toLowerCase();     // 英字・数字・記号すべて受け付け
+  else if(k.length===1){ state._rawKey=k; norm=k.toLowerCase(); }   // 英字・数字・記号すべて受け付け（生キーも保持）
   else return;
 
   if(state.mode==='position') positionInput(norm);
