@@ -136,6 +136,22 @@
     background:#12110f;color:var(--ink);border:1px solid var(--line);border-radius:10px;
     padding:12px;font-family:ui-monospace,monospace;font-size:14px;line-height:1.6;outline:none;}
   .free-ta:focus{border-color:var(--accent);}
+  .ft-saved{max-width:640px;margin:0 auto 12px;}
+  .ft-head{font-size:11px;color:var(--accent);letter-spacing:.08em;margin-bottom:6px;}
+  .ft-list{display:flex;flex-direction:column;gap:5px;max-height:180px;overflow-y:auto;}
+  .ft-item{display:flex;gap:6px;align-items:stretch;}
+  .ft-load{all:unset;cursor:pointer;flex:1;display:flex;align-items:center;justify-content:space-between;gap:10px;
+    border:1px solid var(--line);border-radius:8px;padding:7px 12px;transition:.12s;min-width:0;}
+  .ft-load:hover{border-color:var(--accent);background:#252b36;}
+  .ft-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px;}
+  .ft-date{font-size:11px;color:var(--ink-dim);flex:none;}
+  .ft-del{all:unset;cursor:pointer;width:30px;display:flex;align-items:center;justify-content:center;
+    border:1px solid var(--line);border-radius:8px;color:var(--ink-dim);transition:.12s;flex:none;}
+  .ft-del:hover{border-color:var(--bad);color:var(--bad);}
+  .ft-titleinput{width:100%;max-width:640px;display:block;margin:8px auto 0;box-sizing:border-box;
+    background:#12110f;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px 12px;
+    font-size:13px;outline:none;}
+  .ft-titleinput:focus{border-color:var(--accent);}
   .gtabs{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-bottom:14px;}
   .gtab{font-size:11px;}
   .rec-actions{display:flex;gap:8px;justify-content:center;margin-bottom:14px;flex-wrap:wrap;}
@@ -699,10 +715,11 @@ function renderMainMenu(){
   clearHeatmap();
   const items=[
     {t:'ポジション練習', d:'指の位置を覚える', go:()=>openSetMenu('position')},
+    {t:'基本文字入力',   d:'あいうえお／アルファベット', go:()=>openBasicMenu()},
     {t:'ランダム練習',   d:'ランダムな文字を速く', go:()=>openSetMenu('random')},
     {t:'英単語練習',     d:'英単語で実戦', go:()=>startWord()},
     {t:'ローマ字練習',   d:'ひらがなをローマ字で', go:()=>openRomajiMenu()},
-    {t:'弱点集中ドリル', d:'苦手キーを重点的に', go:()=>startDrill()},
+    {t:'弱点集中ドリル', d:'苦手キー／遅かった単語', go:()=>openDrillMenu()},
     {t:'自由テキスト練習', d:'貼り付けた文で練習', go:()=>renderFreeInput()},
     {t:'レイヤー練習',   d:'数字・記号など別レイヤー', go:()=>renderLayerMenu()},
     {t:'成績・分析',     d:'記録・苦手キー・指別', go:()=>renderRecords()},
@@ -765,6 +782,7 @@ function startPractice(mode, setKey){
   else { startRandom(setKey); }
 }
 function startPosition(setKey){
+  state._histMode=null; state._freeLabel=null;
   state.view='position'; state.mode='position'; state.setKey=setKey;
   state.count=0; state.errCount=0; state.posPrev=-1; state.finished=false;
   resetKeyStats();
@@ -879,6 +897,43 @@ function genWordItems(count){
 function makeRandomText(setKey){ state._prevIdx=-1; return genRandomItems(setKey, sizedChars('random',setKey)); }
 function makeWordText(){ state._lastWord=-1; return genWordItems(sizedChars('word','word')); }
 
+/* ---- 基本文字入力（あいうえお／アルファベット） ---- */
+function openBasicMenu(){
+  state.view='menu-set'; state.mode=null; clearHeatmap();
+  setStatus('基本文字入力','–');
+  const items=[
+    {t:'あいうえお練習', d:'あいうえお＋スペース ×15', go:()=>startBasicKana()},
+    {t:'アルファベット練習', d:'a〜z＋スペース ×4', go:()=>startBasicAlpha()},
+    {t:'メニューに戻る', d:'', go:()=>renderMainMenu()},
+  ];
+  state.menuItems=items; state.menuIdx=0;
+  screen.innerHTML=
+    `<div class="menu-title mono">基本文字入力 / 種類をえらぶ</div>
+     <p class="scr-note">いちばん基本の反復練習です。あいうえおはローマ字で、アルファベットは直接打鍵で入力します（制限時間なし・最後まで）。</p>
+     ${menuBlock(items)}`;
+  wireMenu();
+  hintEl.innerHTML='<span class="k">↑</span><span class="k">↓</span> 選択　<span class="k">Enter</span> 決定　<span class="k">Esc</span> 戻る';
+}
+function startBasicKana(){ startFree('あいうえお '.repeat(15), 'あいうえお練習', 'basic'); }
+function startBasicAlpha(){ startFree('abcdefghijklmnopqrstuvwxyz '.repeat(4), 'アルファベット練習', 'basic'); }
+
+/* ---- 弱点集中サブメニュー ---- */
+function openDrillMenu(){
+  state.view='menu-set'; state.mode=null; clearHeatmap();
+  setStatus('弱点集中ドリル','–');
+  const items=[
+    {t:'苦手キー ドリル', d:'ミス・反応が遅いキーを重点的に', go:()=>startDrill()},
+    {t:'遅かった単語（ローマ字）', d:'入力が遅かった単語を集中', go:()=>startSlowWordDrill()},
+    {t:'メニューに戻る', d:'', go:()=>renderMainMenu()},
+  ];
+  state.menuItems=items; state.menuIdx=0;
+  screen.innerHTML=
+    `<div class="menu-title mono">弱点集中ドリル / 種類をえらぶ</div>
+     <p class="scr-note">「苦手キー」は累計のミス率・反応時間から自動生成します。「遅かった単語」はローマ字の単語／自由テキスト練習で入力が遅かった単語を出題します。</p>
+     ${menuBlock(items)}`;
+  wireMenu();
+  hintEl.innerHTML='<span class="k">↑</span><span class="k">↓</span> 選択　<span class="k">Enter</span> 決定　<span class="k">Esc</span> 戻る';
+}
 /* ---- 弱点集中ドリル: 累計で苦手/遅いキーを重み付けして生成 ---- */
 function weaknessPool(){
   const cum=loadKeyStats();
@@ -906,6 +961,7 @@ function genDrillItems(count){
   return out;
 }
 function startDrill(){
+  state._histMode=null; state._freeLabel=null;
   state.view='drill'; state.mode='drill'; state.setKey='drill'; state._drillPool=null;
   state._gen=(n)=>genDrillItems(n); state._extend=true;
   state.target=genDrillItems(120); state.ptr=0;
@@ -962,9 +1018,9 @@ function kanjiToHiragana(text){
     }).join('');
   });
 }
-function startFree(text){
+function startFree(text, label, histMode){
   if(!text || !text.trim()){ renderFreeInput(); return; }
-  state._freeText=text;
+  state._freeText=text; state._freeLabel=label||null; state._histMode=histMode||null;
   const hira=toHiragana(text);
   const hasKanji=/[\u3400-\u9fff\uf900-\ufaff]/.test(hira);   // 漢字を含む
   if(hasKanji){
@@ -987,7 +1043,7 @@ function startFree(text){
   state.view='free'; state.mode='free'; state.setKey='free';
   state._extend=false; state._noTimeLimit=true;
   state.target=items; state.ptr=0;
-  beginFlow('自由テキスト練習');
+  beginFlow(state._freeLabel||'自由テキスト練習');
   hintEl.innerHTML='最後まで打ちきろう（制限時間なし）　<span class="k">Esc</span> 中断';
 }
 function expandChoon(s){
@@ -1013,7 +1069,7 @@ function startFreeRomaji(hira){
   state.finished=false; state.running=false; state.startTime=0; state.endTime=0;
   state._noTimeLimit=true;
   resetKeyStats();
-  setStatus('自由テキスト（ローマ字）', '0 かな');
+  setStatus(state._freeLabel||'自由テキスト（ローマ字）', '0 かな');
   renderRomaji(); refreshRomajiKeyboard();
   hintEl.innerHTML='ひらがなをローマ字で。「ん」は <span class="k">nn</span>　最後まで（制限なし）　<span class="k">Esc</span> 中断';
 }
@@ -1040,6 +1096,7 @@ function genLayerItems(count){
   return out;
 }
 function startLayer(layerIdx){
+  state._histMode=null; state._freeLabel=null;
   layerIdx=Math.max(0, Math.min(layerIdx|0, ACTIVE_LAYOUT.length-1));
   state._layerIdx=layerIdx;
   state._layerPool=layerCharPool(layerIdx);
@@ -1051,12 +1108,14 @@ function startLayer(layerIdx){
   beginFlow('レイヤー'+layerIdx+' 練習');
 }
 function startRandom(setKey){
+  state._histMode=null; state._freeLabel=null;
   state.view='random'; state.mode='random'; state.setKey=setKey;
   state._gen=(n)=>genRandomItems(setKey,n); state._extend=true;
   state.target=makeRandomText(setKey); state.ptr=0;
   beginFlow('ランダム練習：'+SETS[setKey].label);
 }
 function startWord(){
+  state._histMode=null; state._freeLabel=null;
   state.view='word'; state.mode='word'; state.setKey='word';
   state._gen=(n)=>{ const m=genWordItems(n); m.unshift({ch:' ',sp:false}); return m; }; state._extend=true;
   state.target=makeWordText(); state.ptr=0;
@@ -1065,7 +1124,7 @@ function startWord(){
 function retryFlow(){
   if(state.mode==='word') startWord();
   else if(state.mode==='drill') startDrill();
-  else if(state.mode==='free') startFree(state._freeText);
+  else if(state.mode==='free') startFree(state._freeText, state._freeLabel, state._histMode);
   else if(state.mode==='layer') startLayer(state._layerIdx);
   else startRandom(state.setKey);
 }
@@ -1158,7 +1217,7 @@ function finishFlow(completed, aborted){
   const acc=state.count+state.errCount>0? state.count/(state.count+state.errCount)*100 : 100;
   state.lastResult={sec,spd,err:state.errCount,newRec:rec.isNew,completed,aborted,keyRank:sessionKeyRanking(),slowRank:sessionSlowRanking(),biRank:sessionBigramRanking(),wpm:toWpm(spd),acc};
   mergeKeyStats();
-  if(!aborted) pushHistory({t:Date.now(),mode:state.mode,key,wpm:toWpm(spd),acc:Math.round(acc*10)/10,spd:Math.round(spd)}); // 中断は上達グラフに入れない
+  if(!aborted) pushHistory({t:Date.now(),mode:state._histMode||state.mode,key,wpm:toWpm(spd),acc:Math.round(acc*10)/10,spd:Math.round(spd)}); // 中断は上達グラフに入れない
   const title=document.getElementById('st-mode').textContent;
   renderResult(title, ()=> retryFlow());
 }
@@ -1203,6 +1262,45 @@ function genRomajiWordUnits(count){
   }
   state._lastHira=last; return units;
 }
+/* ---- 遅かった単語ドリル ---- */
+function slowWordPool(){
+  const s=loadWordStats();
+  return Object.keys(s)
+    .map(w=>({w, avg:s[w].time/Math.max(1,s[w].kana), cnt:s[w].cnt}))
+    .filter(x=>x.cnt>=1 && x.w.length>=1)
+    .sort((a,b)=> b.avg-a.avg)          // 1かなあたりが遅い順
+    .slice(0,40)
+    .map(x=>x.w);
+}
+function genSlowWordUnits(count){
+  const pool=state._slowPool&&state._slowPool.length? state._slowPool : slowWordPool();
+  if(!pool.length) return genRomajiWordUnits(count);
+  const units=[]; let last=-1;
+  for(let n=0;n<count;n++){
+    let wi; do{ wi=Math.floor(Math.random()*pool.length); }while(pool.length>1 && wi===last); last=wi;
+    if(units.length>0) units.push({display:'␣',options:[' '],isSpace:true});
+    decompose(pool[wi]).forEach(u=>units.push(u));
+  }
+  return units;
+}
+function startSlowWordDrill(){
+  state._histMode=null; state._freeLabel=null;
+  const pool=slowWordPool();
+  if(!pool.length){
+    alert('まだ「遅かった単語」のデータがありません。\nローマ字の「単語」練習、または日本語を含む「自由テキスト」練習をすると、遅かった単語が記録されていきます。');
+    openDrillMenu(); return;
+  }
+  state._slowPool=pool;
+  state.view='romaji'; state.mode='romaji'; state.setKey='slowword';
+  state.units = genSlowWordUnits(Math.max(6, Math.round(sizedKana('slowword')/6)));
+  state.uIdx=0; state.buf=''; state.count=0; state.keyCount=0; state.errCount=0;
+  state._noTimeLimit=false;
+  resetKeyStats();
+  state.finished=false; state.running=false; state.startTime=0; state.endTime=0;
+  setStatus('遅かった単語ドリル', '0 かな');
+  renderRomaji(); refreshRomajiKeyboard();
+  hintEl.innerHTML='あなたが遅かった単語を集中練習　「ん」は <span class="k">nn</span>　'+TIME_LIMIT+'秒　<span class="k">Esc</span> 中断';
+}
 // 記録(かな/分)に応じた初期量。約60秒ぶんを目安に。
 function sizedKana(key){
   const spd=recordSpeed('romaji',key);
@@ -1211,6 +1309,7 @@ function sizedKana(key){
 function makeRomajiRandom(){ state._prevKana=-1; return genRomajiRandomUnits(sizedKana('random')); }
 function makeRomajiWord(){ state._lastHira=-1; return genRomajiWordUnits(Math.max(8, Math.round(sizedKana('word')/6))); }
 function startRomaji(sub){
+  state._histMode=null; state._freeLabel=null;
   state.view='romaji'; state.mode='romaji'; state.setKey=sub;
   state.units = sub==='word'? makeRomajiWord() : makeRomajiRandom();
   state.uIdx=0; state.buf=''; state.count=0; state.keyCount=0; state.errCount=0;
@@ -1261,11 +1360,13 @@ function romajiInput(ch){
   const u=currentRomajiUnit();
   if(!u){ finishRomaji(true); return; }
 
+  const trackWords = (state.setKey==='word'||state.setKey==='free'||state.setKey==='slowword');
   if(u.isSpace){
     if(key===' '){
       if(!state.running){ state.running=true; state.startTime=performance.now(); startTick(); }
       recordKeyStroke(' ', false);
       flashPress(' ',false); state.keyCount++;
+      if(trackWords) finalizeSlowWord();      // 単語区切り→ここまでの単語を確定
       markRomajiDone(); advanceRomaji();
     } else romajiError(key, ' ');
     return;
@@ -1277,11 +1378,13 @@ function romajiInput(ch){
   }
   if(!state.running){ state.running=true; state.startTime=performance.now(); startTick(); }
   recordKeyStroke(key, false);
+  if(trackWords) state._wordMs += (state._lastDt||0);   // この打鍵ぶんの時間を現在の単語へ
   flashPress(key,false);
   state.buf=nb; state.keyCount++;
   const exact=u.options.includes(state.buf);
   const longer=u.options.some(o=>o.length>state.buf.length && o.startsWith(state.buf));
   if(exact && !longer){
+    if(trackWords){ state._wordChars += u.display; state._wordKana++; }  // かな1つ確定
     state.count++; markRomajiDone(); state.buf=''; advanceRomaji();
   } else {
     renderRomaji(); refreshRomajiKeyboard();
@@ -1302,8 +1405,10 @@ function markRomajiDone(){
 function advanceRomaji(){
   state.uIdx++;
   if(state.setKey!=='free' && state.uIdx > state.units.length - 12){   // 残り少なくなったら継ぎ足し（自由テキストは除く）
-    const more = state.setKey==='word'? genRomajiWordUnits(12) : genRomajiRandomUnits(30);
-    if(state.setKey==='word') more.unshift({display:'␣',options:[' '],isSpace:true}); // 単語区切り
+    const more = state.setKey==='word'? genRomajiWordUnits(12)
+               : state.setKey==='slowword'? genSlowWordUnits(12)
+               : genRomajiRandomUnits(30);
+    if(state.setKey==='word'||state.setKey==='slowword') more.unshift({display:'␣',options:[' '],isSpace:true}); // 単語区切り
     state.units.push(...more);
   }
   setStatus(document.getElementById('st-mode').textContent, `${state.count} かな`);
@@ -1314,6 +1419,7 @@ function advanceRomaji(){
 function finishRomaji(completed, aborted){
   state.running=false; state.endTime=performance.now(); stopTick();
   state.finished=true; clearKeyStates();
+  if(state.setKey==='word'||state.setKey==='free'||state.setKey==='slowword') finalizeSlowWord();  // 末尾の単語を確定
   let sec=(state.endTime-state.startTime)/1000; if(sec<=0) sec=0.001;
   const kpm=state.count*60/sec;     // かな/分
   const spm=state.keyCount*60/sec;  // 打鍵/分
@@ -1321,10 +1427,13 @@ function finishRomaji(completed, aborted){
   const acc=state.count+state.errCount>0? state.count/(state.count+state.errCount)*100 : 100;
   state.lastResult={sec,spd:kpm,kpm:spm,err:state.errCount,newRec:rec.isNew,romaji:true,aborted,keyRank:sessionKeyRanking(),slowRank:sessionSlowRanking(),biRank:sessionBigramRanking(),wpm:toWpm(spm),acc};
   mergeKeyStats();
-  if(!aborted) pushHistory({t:Date.now(),mode:'romaji',key:state.setKey,wpm:toWpm(spm),acc:Math.round(acc*10)/10,spd:Math.round(kpm)}); // 中断は上達グラフに入れない
-  const isFree=state.setKey==='free';
-  const title=isFree?'自由テキスト（ローマ字）':('ローマ字練習：'+(state.setKey==='word'?'単語':'ランダム'));
-  renderResult(title, isFree? (()=>startFree(state._freeText)) : (()=>startRomaji(state.setKey)));
+  if(!aborted) pushHistory({t:Date.now(),mode:state._histMode||'romaji',key:state.setKey,wpm:toWpm(spm),acc:Math.round(acc*10)/10,spd:Math.round(kpm)}); // 中断は上達グラフに入れない
+  const isFree=state.setKey==='free', isSlow=state.setKey==='slowword';
+  let title, retry;
+  if(isFree){ title=state._freeLabel||'自由テキスト（ローマ字）'; retry=()=>startFree(state._freeText, state._freeLabel, state._histMode); }
+  else if(isSlow){ title='遅かった単語ドリル'; retry=()=>startSlowWordDrill(); }
+  else { title='ローマ字練習：'+(state.setKey==='word'?'単語':'ランダム'); retry=()=>startRomaji(state.setKey); }
+  renderResult(title, retry);
 }
 
 /* ============================================================
@@ -1417,12 +1526,23 @@ const REC_KEY='splitTypingTrainer.records.v1';
 const KEYSTATS_KEY='splitTypingTrainer.keystats.v1';
 const BISTATS_KEY='splitTypingTrainer.bistats.v1';
 const HISTORY_KEY='splitTypingTrainer.history.v1';
+const FREETEXTS_KEY='splitTypingTrainer.freetexts.v1';
+function loadFreeTexts(){ try{return JSON.parse(localStorage.getItem(FREETEXTS_KEY))||[];}catch(e){return [];} }
+function saveFreeTexts(list){ try{localStorage.setItem(FREETEXTS_KEY, JSON.stringify(list));}catch(e){} }
+function addFreeText(title, text){
+  const list=loadFreeTexts();
+  list.unshift({id:Date.now()+'_'+Math.random().toString(36).slice(2,6), title:(title||'').slice(0,60), text, at:new Date().toISOString().slice(0,10)});
+  while(list.length>100) list.pop();     // 最大100件
+  saveFreeTexts(list);
+}
+function deleteFreeText(id){ saveFreeTexts(loadFreeTexts().filter(x=>x.id!==id)); }
 function loadRecords(){ try{return JSON.parse(localStorage.getItem(REC_KEY))||{};}catch(e){return {};} }
 
 /* ---- 押し間違い＆反応速度＆連なりの集計（セッション別＋累計） ---- */
 function resetKeyStats(){
   state.keyErr={}; state.keyAtt={}; state.keyTime={}; state.keyTimeCnt={};
-  state.biTime={}; state.biCnt={}; state.lastKeyT=null; state.lastKeyChar=null;
+  state.biTime={}; state.biCnt={}; state.lastKeyT=null; state.lastKeyChar=null; state._lastDt=0;
+  state._wordChars=''; state._wordMs=0; state._wordKana=0;
 }
 function recordKeyStroke(ch, isError){
   if(ch==null || !state.keyAtt) return;
@@ -1430,9 +1550,11 @@ function recordKeyStroke(ch, isError){
   state.keyAtt[ch]=(state.keyAtt[ch]||0)+1;
   if(isError){ state.keyErr[ch]=(state.keyErr[ch]||0)+1; return; }
   const now=performance.now();
+  state._lastDt=0;
   if(state.lastKeyT!=null){
     const dt=now-state.lastKeyT;
     if(dt>0 && dt<3000){
+      state._lastDt=dt;
       state.keyTime[ch]=(state.keyTime[ch]||0)+dt; state.keyTimeCnt[ch]=(state.keyTimeCnt[ch]||0)+1;
       if(state.lastKeyChar!=null && state.lastKeyChar!==' ' && ch!==' '){   // 2キー連なり
         const bg=state.lastKeyChar+ch;
@@ -1441,6 +1563,22 @@ function recordKeyStroke(ch, isError){
     }
   }
   state.lastKeyT=now; state.lastKeyChar=ch;
+}
+/* ---- 「遅かった単語」記録（ローマ字の単語/自由テキストのみ） ---- */
+const WORDSTATS_KEY='splitTypingTrainer.wordstats.v1';
+function loadWordStats(){ try{return JSON.parse(localStorage.getItem(WORDSTATS_KEY))||{};}catch(e){return {};} }
+function saveWordStats(o){ try{localStorage.setItem(WORDSTATS_KEY, JSON.stringify(o));}catch(e){} }
+function finalizeSlowWord(){
+  if(state._wordChars && state._wordKana>0 && state._wordMs>0){
+    const s=loadWordStats(); const w=state._wordChars;
+    s[w]=s[w]||{time:0,kana:0,cnt:0};
+    s[w].time+=state._wordMs; s[w].kana+=state._wordKana; s[w].cnt+=1;
+    // 肥大化防止（500語まで、少ない試行から間引き）
+    const keys=Object.keys(s);
+    if(keys.length>500){ keys.sort((a,b)=>(s[a].cnt-s[b].cnt)); saveWordStats(Object.fromEntries(keys.slice(-500).map(k=>[k,s[k]]))); }
+    else saveWordStats(s);
+  }
+  state._wordChars=''; state._wordMs=0; state._wordKana=0;
 }
 function sessionKeyRanking(){
   const e=state.keyErr||{}, a=state.keyAtt||{};
@@ -1586,19 +1724,45 @@ function saveRecord(mode, setKey, spd){
 function renderFreeInput(){
   state.view='free-input'; state.mode=null; clearHeatmap();
   setStatus('自由テキスト練習','–');
+  const saved=loadFreeTexts();
+  const listHtml = saved.length
+    ? '<div class="ft-list">'+saved.map(s=>{
+        const preview=esc((s.title||s.text||'').replace(/\s+/g,' ').slice(0,40));
+        return `<div class="ft-item" data-id="${esc(s.id)}">`+
+               `<button class="ft-load" data-id="${esc(s.id)}" title="この文章で練習"><span class="ft-title">${preview||'(無題)'}</span><span class="ft-date mono">${esc(s.at||'')}</span></button>`+
+               `<button class="ft-del" data-id="${esc(s.id)}" title="削除">×</button></div>`;
+      }).join('')+'</div>'
+    : '<p class="scr-note" style="margin-top:6px;">保存した文章はまだありません。下で貼り付けて「保存」すると、ここに一覧表示されます。</p>';
   screen.innerHTML=
     `<div class="menu-title mono">自由テキスト練習</div>
-     <p class="scr-note">練習したい文章を貼り付けてください（コード・定型文・ローマ字など）。英字・数字・記号・スペースに対応し、大文字は小文字として扱います（改行は空白に変換）。</p>
+     <p class="scr-note">練習したい文章を貼り付けてください（コード・定型文・ローマ字・日本語など）。英数記号・スペース対応、大文字は小文字扱い、改行は空白に変換。漢字を含むとひらがな読みに変換します。</p>
+     <div class="ft-saved"><div class="ft-head mono">保存した文章</div>${listHtml}</div>
      <textarea id="freeText" class="free-ta" placeholder="ここに文章を貼り付け…"></textarea>
-     <div style="margin-top:12px;"><button id="freeStart" class="pill" style="font-size:13px;padding:7px 16px;">▶ この文章で練習</button></div>`;
+     <input id="freeTitle" class="ft-titleinput" placeholder="保存時のタイトル（任意）" />
+     <div style="margin-top:10px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+       <button id="freeStart" class="pill" style="font-size:13px;padding:7px 16px;">▶ この文章で練習</button>
+       <button id="freeSave" class="pill" style="font-size:13px;padding:7px 16px;">💾 保存</button>
+     </div>`;
   const ta=document.getElementById('freeText'); if(state._freeText) ta.value=state._freeText;
   document.getElementById('freeStart').addEventListener('click',()=>{
-    const v=document.getElementById('freeText').value;
-    if(!v.trim()){ ta.focus(); return; }
-    startFree(v);
+    const v=ta.value; if(!v.trim()){ ta.focus(); return; } startFree(v);
   });
+  document.getElementById('freeSave').addEventListener('click',()=>{
+    const v=ta.value; if(!v.trim()){ ta.focus(); return; }
+    const title=document.getElementById('freeTitle').value.trim();
+    addFreeText(title, v);
+    renderFreeInput();   // 一覧を更新
+  });
+  screen.querySelectorAll('.ft-load').forEach(b=>b.addEventListener('click',()=>{
+    const item=loadFreeTexts().find(x=>x.id===b.dataset.id);
+    if(item) startFree(item.text);
+  }));
+  screen.querySelectorAll('.ft-del').forEach(b=>b.addEventListener('click',(e)=>{
+    e.stopPropagation();
+    if(confirm('この保存文章を削除しますか？')){ deleteFreeText(b.dataset.id); renderFreeInput(); }
+  }));
   setTimeout(()=>ta.focus(),50);
-  hintEl.innerHTML='文章を貼り付けて「練習」　<span class="k">Esc</span> メニューへ';
+  hintEl.innerHTML='貼り付けて「練習」／「保存」　一覧から選んでロード　<span class="k">Esc</span> メニューへ';
 }
 
 /* ============================================================
@@ -1635,13 +1799,13 @@ function renderGraph(){
   drawGraph();
   hintEl.innerHTML='<span class="k">Esc</span> メニューへ';
 }
-const GRAPH_MODES=[['all','すべて'],['position','ポジション'],['random','ランダム'],['word','英単語'],['romaji','ローマ字'],['drill','ドリル'],['free','自由'],['layer','レイヤー']];
+const GRAPH_MODES=[['all','すべて'],['basic','基本'],['position','ポジション'],['random','ランダム'],['word','英単語'],['romaji','ローマ字'],['drill','ドリル'],['free','自由'],['layer','レイヤー']];
 const GRAPH_LIMITS=[50,100,1000,10000];
 function drawGraph(){
   const all=loadHistory();
   const f=state._graphFilter;
   const limit=state._graphLimit||50;
-  const data=(f==='all'?all:all.filter(h=>h.mode===f)).filter(h=>(h.wpm||0)>0).slice(-limit);
+  const data=(f==='all'?all.filter(h=>h.mode!=='basic'):all.filter(h=>h.mode===f)).filter(h=>(h.wpm||0)>0).slice(-limit);
   const tabs=GRAPH_MODES.map(([m,l])=>`<button class="pill gtab${state._graphFilter===m?' live':''}" data-m="${m}">${l}</button>`).join(' ');
   const limitTabs=GRAPH_LIMITS.map(n=>`<button class="pill gtab glim${state._graphLimit===n?' live':''}" data-n="${n}">直近${n}</button>`).join(' ');
   let body;
